@@ -1,9 +1,16 @@
 package org.macver.blip;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.component.type.PotionContentsComponent;
+import net.minecraft.enchantment.Enchantment;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.potion.Potion;
+import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKeys;
 import org.jetbrains.annotations.NotNull;
 import org.macver.blip.mixin.client.PlayerInventoryAccessor;
 
@@ -13,25 +20,63 @@ import java.util.stream.Stream;
 public class ItemSearcher {
     private static final FuzzyScore fuzzyScore = new FuzzyScore(Locale.ENGLISH);
 
-    public List<Item> searchItems(String query) {
-        Stream<Item> items;
+    public List<ItemStack> searchItems(String query) {
+        Stream<ItemStack> stacks;
         // only show all items if in creative
         if (MinecraftClient.getInstance().player.getAbilities().creativeMode) {
-            items = Registries.ITEM.stream();
+            stacks = Registries.ITEM.stream()
+                    .filter(item -> item != Items.ENCHANTED_BOOK)
+                    .map(Item::getDefaultStack);
+            ArrayList<ItemStack> additionalStacks = new ArrayList<>(Collections.emptyList());
+            DynamicRegistryManager registryManager = MinecraftClient.getInstance().player.getWorld().getRegistryManager();
+            Registry<Enchantment> enchantments = registryManager.getOrThrow(RegistryKeys.ENCHANTMENT);
+            for (Enchantment enchantment : enchantments) {
+                for (int i = enchantment.getMinLevel(); i <= enchantment.getMaxLevel(); i++) {
+                    ItemStack stack = new ItemStack(Items.ENCHANTED_BOOK);
+                    stack.addEnchantment(enchantments.getEntry(enchantment), i);
+                    additionalStacks.add(stack);
+                }
+            }
+            for (Potion potion : Registries.POTION) {
+                additionalStacks.add(PotionContentsComponent.createStack(Items.POTION, Registries.POTION.getEntry(potion)));
+
+                additionalStacks.add(PotionContentsComponent.createStack(Items.SPLASH_POTION, Registries.POTION.getEntry(potion)));
+
+                additionalStacks.add(PotionContentsComponent.createStack(Items.LINGERING_POTION, Registries.POTION.getEntry(potion)));
+
+                additionalStacks.add(PotionContentsComponent.createStack(Items.TIPPED_ARROW, Registries.POTION.getEntry(potion)));
+            }
+            stacks = Stream.concat(stacks, additionalStacks.stream());
         } else {
             // otherwise only show items from inventory
             PlayerInventoryAccessor inventory = (PlayerInventoryAccessor) MinecraftClient.getInstance().player.getInventory();
-            items = inventory.getMain().stream()
+            stacks = inventory.getMain().stream()
                     .filter(stack -> !stack.isEmpty())
-                    .map(ItemStack::getItem)
                     .distinct();
         }
-        return items
-                .map(item -> {
-                    String itemName = item.getName().getString();
-                    int score = fuzzyScore.fuzzyScore(itemName, query);
+        return stacks
+                .map(stack -> {
+                    String itemName = stack.getName().getString();
+                    ArrayList<String> extraAttributes = new ArrayList<>(SearchBox.getEnchantments(stack));
+                    extraAttributes.addAll(SearchBox.getEffects(stack));
+                    ArrayList<Integer> scores = new ArrayList<>(Collections.emptyList());
+                    int itemScore = fuzzyScore.fuzzyScore(itemName, query);
+                    for (String attribute : extraAttributes) {
+                        int attributeScore = fuzzyScore.fuzzyScore(attribute, query);
+                        if (attributeScore > itemScore) itemScore = attributeScore;
+                    }
+                    scores.add(itemScore);
+                    for (String queryPart : query.split(" ")) {
+                        int score = fuzzyScore.fuzzyScore(itemName, queryPart);
+                        for (String attribute : extraAttributes) {
+                            int attributeScore = fuzzyScore.fuzzyScore(attribute, queryPart);
+                            if (attributeScore > score) score = attributeScore;
+                        }
+                        scores.add(score);
+                    }
+                    int score = scores.stream().mapToInt(a -> a).sum();
                     int nameLength = itemName.length();
-                    return new ScoredItem(item, score, nameLength);
+                    return new ScoredItem(stack, score, nameLength);
                 })
                 .filter(si -> si.score > 0)
                 .sorted()
@@ -39,14 +84,14 @@ public class ItemSearcher {
                 .toList();
     }
 
-    private record ScoredItem(Item item, int score, int length) implements Comparable<ScoredItem> {
+    private record ScoredItem(ItemStack item, int score, int length) implements Comparable<ScoredItem> {
 
         @Override
-            public int compareTo(@NotNull ScoredItem other) {
-                // Higher score first
-                if (this.score != other.score) return Integer.compare(other.score, this.score);
-                // If scores are equal, prefer shorter names
-                return Integer.compare(this.length, other.length);
-            }
+        public int compareTo(@NotNull ScoredItem other) {
+            // Higher score first
+            if (this.score != other.score) return Integer.compare(other.score, this.score);
+            // If scores are equal, prefer shorter names
+            return Integer.compare(this.length, other.length);
         }
+    }
 }

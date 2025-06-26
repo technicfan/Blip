@@ -5,11 +5,20 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.gui.widget.TextWidget;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.resource.language.I18n;
+import net.minecraft.component.ComponentType;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.ItemEnchantmentsComponent;
+import net.minecraft.component.type.PotionContentsComponent;
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
+import net.minecraft.item.Items;
+import net.minecraft.registry.*;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -18,9 +27,7 @@ import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.macver.blip.mixin.client.PlayerInventoryAccessor;
 
-import java.util.List;
-import java.util.Locale;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 public class SearchBox extends Screen {
     public SearchBox(Text title) {
@@ -52,12 +59,13 @@ public class SearchBox extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == GLFW.GLFW_KEY_ENTER) {
             String input = textFieldWidget.getText();
-            List<Item> results = searchItems(input);
+            List<ItemStack> results = searchItems(input);
             if (!results.isEmpty()) {
                 boolean countSpecified = false;
-                ItemStack stack = new ItemStack(results.getFirst()); // Pick top result
+                ItemStack stack = results.getFirst(); // Pick top result
                 try {
                     int count = getCount(input);
+                    if (count > stack.getMaxCount()) count = stack.getMaxCount();
                     stack.setCount(count);
                     countSpecified = true;
                 } catch (Exception ignored) {
@@ -78,7 +86,10 @@ public class SearchBox extends Screen {
                     int slotWithStack = -1;
                     for (int i = 0; i < inventory.size(); i++) {
                         // A for loop is used instead of inventory.getSlotWithStack(stack) so that count is irrelevant
-                        if (inventory.getStack(i).isOf(stack.getItem())) {
+                        if (inventory.getStack(i).isOf(stack.getItem())
+                                && getEnchantments(inventory.getStack(i)).equals(getEnchantments(stack))
+                                && getEffects(inventory.getStack(i)).equals(getEnchantments(stack))
+                        ) {
                             slotWithStack = i;
                             break;
                         }
@@ -101,7 +112,7 @@ public class SearchBox extends Screen {
 
 //                        int slotWithStack = -1;
 //
-//                        // Find a stack with matching item regardless of count
+//                        // Find a stack with matching stack regardless of count
 //                        for (int i = 0; i < inventory.size(); i++) {
 //                            // A for loop is used instead of inventory.getSlotWithStack(stack) so that count is irrelevant
 //                            if (inventory.getStack(i).isOf(stack.getItem())) {
@@ -149,7 +160,7 @@ public class SearchBox extends Screen {
                 // If there are no empty hotbar slots, see if there is an empty slot in the inventory
                 int emptySlot = inventory.getEmptySlot();
                 if (emptySlot != -1) {
-                    // If one is found, move current hand item into there
+                    // If one is found, move current hand stack into there
                     swapSlots(emptySlot, selectedSlot);
                 }
 
@@ -217,7 +228,46 @@ public class SearchBox extends Screen {
         }
     }
 
-    public List<Item> searchItems(@NotNull String query) {
+    public static List<String> getEnchantments(@NotNull ItemStack stack) {
+        ItemEnchantmentsComponent enchantmentManager;
+        ArrayList<String> enchantments = new ArrayList<>(Collections.emptyList());
+        if (stack.getItem() == Items.ENCHANTED_BOOK) {
+            enchantmentManager = stack.get(DataComponentTypes.STORED_ENCHANTMENTS);
+        } else {
+            enchantmentManager = stack.getEnchantments();
+        }
+        if (enchantmentManager != null) for (RegistryEntry<Enchantment> enchantment : enchantmentManager.getEnchantments()) {
+            enchantments.add(Enchantment.getName(enchantment, enchantmentManager.getLevel(enchantment)).getString());
+        }
+
+        return enchantments.stream().sorted().toList();
+    }
+
+    public static List<String> getEffects(@NotNull ItemStack stack) {
+        ArrayList<String> effects = new ArrayList<>(Collections.emptyList());
+        PotionContentsComponent effectManager = stack.get(DataComponentTypes.POTION_CONTENTS);
+        if (effectManager != null) for (StatusEffectInstance effect : effectManager.getEffects()) {
+            StringBuilder name = new StringBuilder();
+            name.append(Text.translatable(effect.getTranslationKey()).getString());
+            if (effect.getAmplifier() > 0) {
+                name.append(" ")
+                        .append(
+                                Text.translatable("enchantment.level." + (effect.getAmplifier() + 1)).getString()
+                        );
+            }
+            name.append(" (").append(effect.getDuration() / 1200).append(":");
+            if (effect.getDuration()/20%60 != 0) {
+                name.append(effect.getDuration()/20%60).append(")");
+            } else {
+                name.append("00)");
+            }
+            effects.add(String.valueOf(name));
+        }
+
+        return effects.stream().sorted().toList();
+    }
+
+    public List<ItemStack> searchItems(@NotNull String query) {
         if (!query.isEmpty() && Character.isDigit(query.charAt(query.length() - 1))) {
             // Number at the end, include count
             String[] split = query.split(" ");
@@ -273,7 +323,7 @@ public class SearchBox extends Screen {
         super.render(context, mouseX, mouseY, delta);
 
         String input = textFieldWidget.getText();
-        List<Item> suggestions = searchItems(input).stream().limit(5).toList();
+        List<ItemStack> suggestions = searchItems(input).stream().limit(5).toList();
 
         // Minecraft doesn't have a "label" widget, so we'll have to draw our own text.
         // We'll subtract the font height from the Y position to make the text appear above the button.
@@ -288,24 +338,47 @@ public class SearchBox extends Screen {
         int y = (this.height - boxHeight) / 2 - 10;
 
         for (int i = 0; i < suggestions.size(); i++) {
-            Item item = suggestions.get(i);
-            context.drawItem(item.getDefaultStack(), x, y - 5 + i * 20);
+            ItemStack stack = suggestions.get(i);
+            context.drawItem(stack, x, y - 5 + i * 20);
 
+            int deltaY = 0;
+            List<String> enchantments = getEnchantments(stack);
+            List<String> effects = getEffects(stack);
+            if (!enchantments.isEmpty() || !effects.isEmpty()) deltaY = 4;
             try {
                 // Include count if it exists
                 int count = getCount(input);
-                TextWidget textWidget = new TextWidget(Text.of(count + " " + item.getName().getString()), textRenderer);
-                textWidget.setPosition(x + 20, y + i * 20);
+                TextWidget textWidget = new TextWidget(Text.of(count + " " + stack.getName().getString()), textRenderer);
+                textWidget.setPosition(x + 20, y + i * 20 - deltaY);
                 textWidget.render(context, mouseX, mouseY, delta);
                 // addDrawable(textWidget);
             } catch (NoSuchElementException ignored) {
                 // No number at the end, draw normally
-                TextWidget textWidget = new TextWidget(item.getName(), textRenderer);
-                textWidget.setPosition(x + 20, y + i * 20);
+                TextWidget textWidget = new TextWidget(stack.getName(), textRenderer);
+                textWidget.setPosition(x + 20, y + i * 20 - deltaY);
                 textWidget.render(context, mouseX, mouseY, delta);
 //                addDrawable(textWidget);
             }
-
+            if (deltaY != 0 || stack.get(DataComponentTypes.JUKEBOX_PLAYABLE) != null) {
+                MutableText additionalText = null;
+                if (!enchantments.isEmpty()) {
+                    additionalText = Text.literal(String.join(", ", enchantments.stream().limit(3).toList()));
+                    if (enchantments.size() > 3) additionalText.append(" +" + (enchantments.size() - 3));
+                } else if (!effects.isEmpty()) {
+                    additionalText = Text.literal(String.join(", ", effects.stream().limit(3).toList()));
+                    if (effects.size() > 3) additionalText.append(" +" + (effects.size() - 3));
+                }
+                if (additionalText != null) {
+                    context.getMatrices().push();
+                    context.getMatrices().scale(0.8F, 0.8F, 1.0F);
+                    TextWidget textWidget = new TextWidget(additionalText
+                            .formatted(Formatting.GRAY)
+                            , textRenderer);
+                    textWidget.setPosition((x + 20) * 5 / 4, (y + 6 + i * 20) * 5 / 4);
+                    textWidget.render(context, mouseX, mouseY, delta);
+                    context.getMatrices().pop();
+                }
+            }
         }
     }
 }
