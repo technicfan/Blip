@@ -72,20 +72,14 @@ public class ItemSearcher {
                     ArrayList<String> extraAttributes = new ArrayList<>(SearchBox.getEnchantments(stack));
                     extraAttributes.addAll(SearchBox.getEffects(stack));
                     if (SearchBox.getSong(stack) != null) extraAttributes.add(SearchBox.getSong(stack));
-                    int score = fuzzyScore.fuzzyScore(itemName, query);
-                    for (String attribute : extraAttributes) {
-                        int attributeScore = fuzzyScore.fuzzyScore(attribute, query);
-                        if (attributeScore > score) score = attributeScore;
-                    }
-                    if (query.split(" ").length > 1) {
-                        for (String queryPart : query.split(" ")) {
-                            int partScore = fuzzyScore.fuzzyScore(itemName, queryPart);
-                            for (String attribute : extraAttributes) {
-                                int attributeScore = fuzzyScore.fuzzyScore(attribute, queryPart);
-                                if (attributeScore > partScore) partScore = attributeScore;
-                            }
-                            score += partScore;
+                    int score = 0;
+                    for (String queryPart : query.split(" ")) {
+                        int partScore = fuzzyScore.fuzzyScore(itemName, queryPart);
+                        for (String attribute : extraAttributes) {
+                            int attributeScore = fuzzyScore.fuzzyScore(attribute, queryPart);
+                            if (attributeScore > partScore) partScore = attributeScore;
                         }
+                        score += partScore;
                     }
                     int nameLength = itemName.length();
                     return new ScoredItem(stack, score, nameLength);
