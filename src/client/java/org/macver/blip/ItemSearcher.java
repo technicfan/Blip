@@ -38,13 +38,25 @@ public class ItemSearcher {
                 }
             }
             for (Potion potion : Registries.POTION) {
-                additionalStacks.add(PotionContentsComponent.createStack(Items.POTION, Registries.POTION.getEntry(potion)));
-
-                additionalStacks.add(PotionContentsComponent.createStack(Items.SPLASH_POTION, Registries.POTION.getEntry(potion)));
-
-                additionalStacks.add(PotionContentsComponent.createStack(Items.LINGERING_POTION, Registries.POTION.getEntry(potion)));
-
-                additionalStacks.add(PotionContentsComponent.createStack(Items.TIPPED_ARROW, Registries.POTION.getEntry(potion)));
+                additionalStacks.add(
+                    PotionContentsComponent
+                            .createStack(Items.POTION, Registries.POTION.getEntry(potion))
+                );
+                additionalStacks.add(
+                    PotionContentsComponent
+                            .createStack(Items.SPLASH_POTION, Registries.POTION.getEntry(potion))
+                );
+                additionalStacks.add(
+                    PotionContentsComponent
+                            .createStack(Items.LINGERING_POTION, Registries.POTION.getEntry(potion))
+                );
+                // this would create tipped arrows with the default potion duration
+                // I haven't found a way to get the correct duration
+//                additionalStacks.add(
+//                    PotionContentsComponent
+//                            .createStack(Items.TIPPED_ARROW, Registries.POTION.getEntry(potion))
+//                );
+//                ItemStack tippedArrows = new ItemStack(Items.TIPPED_ARROW);
             }
             stacks = Stream.concat(stacks, additionalStacks.stream());
         } else {
@@ -56,25 +68,25 @@ public class ItemSearcher {
         }
         return stacks
                 .map(stack -> {
-                    String itemName = stack.getName().getString();
+                    String itemName = stack.getItemName().getString();
                     ArrayList<String> extraAttributes = new ArrayList<>(SearchBox.getEnchantments(stack));
                     extraAttributes.addAll(SearchBox.getEffects(stack));
-                    ArrayList<Integer> scores = new ArrayList<>(Collections.emptyList());
-                    int itemScore = fuzzyScore.fuzzyScore(itemName, query);
+                    if (SearchBox.getSong(stack) != null) extraAttributes.add(SearchBox.getSong(stack));
+                    int score = fuzzyScore.fuzzyScore(itemName, query);
                     for (String attribute : extraAttributes) {
                         int attributeScore = fuzzyScore.fuzzyScore(attribute, query);
-                        if (attributeScore > itemScore) itemScore = attributeScore;
+                        if (attributeScore > score) score = attributeScore;
                     }
-                    scores.add(itemScore);
-                    for (String queryPart : query.split(" ")) {
-                        int score = fuzzyScore.fuzzyScore(itemName, queryPart);
-                        for (String attribute : extraAttributes) {
-                            int attributeScore = fuzzyScore.fuzzyScore(attribute, queryPart);
-                            if (attributeScore > score) score = attributeScore;
+                    if (query.split(" ").length > 1) {
+                        for (String queryPart : query.split(" ")) {
+                            int partScore = fuzzyScore.fuzzyScore(itemName, queryPart);
+                            for (String attribute : extraAttributes) {
+                                int attributeScore = fuzzyScore.fuzzyScore(attribute, queryPart);
+                                if (attributeScore > partScore) partScore = attributeScore;
+                            }
+                            score += partScore;
                         }
-                        scores.add(score);
                     }
-                    int score = scores.stream().mapToInt(a -> a).sum();
                     int nameLength = itemName.length();
                     return new ScoredItem(stack, score, nameLength);
                 })

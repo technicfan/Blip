@@ -5,8 +5,6 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.gui.widget.TextWidget;
 import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.resource.language.I18n;
-import net.minecraft.component.ComponentType;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.component.type.PotionContentsComponent;
@@ -255,16 +253,25 @@ public class SearchBox extends Screen {
                                 Text.translatable("enchantment.level." + (effect.getAmplifier() + 1)).getString()
                         );
             }
-            name.append(" (").append(effect.getDuration() / 1200).append(":");
-            if (effect.getDuration()/20%60 != 0) {
-                name.append(effect.getDuration()/20%60).append(")");
-            } else {
-                name.append("00)");
+            if (effect.getDuration() > 0) {
+                name.append(" (").append(effect.getDuration() / 1200).append(":");
+                if (effect.getDuration() / 20 % 60 != 0) {
+                    name.append(effect.getDuration() / 20 % 60).append(")");
+                } else {
+                    name.append("00)");
+                }
             }
             effects.add(String.valueOf(name));
         }
 
         return effects.stream().sorted().toList();
+    }
+
+    public static String getSong(@NotNull ItemStack stack) {
+        String[] keySplit = stack.getItem().getTranslationKey().split("music_disc_");
+        if (stack.get(DataComponentTypes.JUKEBOX_PLAYABLE) != null)
+                return Text.translatable("jukebox_song.minecraft." + keySplit[1]).getString();
+        return null;
     }
 
     public List<ItemStack> searchItems(@NotNull String query) {
@@ -344,7 +351,8 @@ public class SearchBox extends Screen {
             int deltaY = 0;
             List<String> enchantments = getEnchantments(stack);
             List<String> effects = getEffects(stack);
-            if (!enchantments.isEmpty() || !effects.isEmpty()) deltaY = 4;
+            String song = getSong(stack);
+            if (!enchantments.isEmpty() || !effects.isEmpty() || song != null) deltaY = 4;
             try {
                 // Include count if it exists
                 int count = getCount(input);
@@ -359,7 +367,7 @@ public class SearchBox extends Screen {
                 textWidget.render(context, mouseX, mouseY, delta);
 //                addDrawable(textWidget);
             }
-            if (deltaY != 0 || stack.get(DataComponentTypes.JUKEBOX_PLAYABLE) != null) {
+            if (deltaY != 0) {
                 MutableText additionalText = null;
                 if (!enchantments.isEmpty()) {
                     additionalText = Text.literal(String.join(", ", enchantments.stream().limit(3).toList()));
@@ -367,17 +375,17 @@ public class SearchBox extends Screen {
                 } else if (!effects.isEmpty()) {
                     additionalText = Text.literal(String.join(", ", effects.stream().limit(3).toList()));
                     if (effects.size() > 3) additionalText.append(" +" + (effects.size() - 3));
+                } else {
+                    additionalText = Text.literal(song);
                 }
-                if (additionalText != null) {
-                    context.getMatrices().push();
-                    context.getMatrices().scale(0.8F, 0.8F, 1.0F);
-                    TextWidget textWidget = new TextWidget(additionalText
-                            .formatted(Formatting.GRAY)
-                            , textRenderer);
-                    textWidget.setPosition((x + 20) * 5 / 4, (y + 6 + i * 20) * 5 / 4);
-                    textWidget.render(context, mouseX, mouseY, delta);
-                    context.getMatrices().pop();
-                }
+                context.getMatrices().push();
+                context.getMatrices().scale(0.8F, 0.8F, 1.0F);
+                TextWidget textWidget = new TextWidget(additionalText
+                        .formatted(Formatting.GRAY)
+                        , textRenderer);
+                textWidget.setPosition((x + 20) * 5 / 4, (y + 6 + i * 20) * 5 / 4);
+                textWidget.render(context, mouseX, mouseY, delta);
+                context.getMatrices().pop();
             }
         }
     }
