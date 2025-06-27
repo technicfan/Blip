@@ -25,7 +25,7 @@ public class ItemSearcher {
         // only show all items if in creative
         if (MinecraftClient.getInstance().player.getAbilities().creativeMode) {
             stacks = Registries.ITEM.stream()
-                    .filter(item -> item != Items.ENCHANTED_BOOK)
+                    .filter(item -> item != Items.ENCHANTED_BOOK || item != Items.AIR)
                     .map(Item::getDefaultStack);
             ArrayList<ItemStack> additionalStacks = new ArrayList<>(Collections.emptyList());
             DynamicRegistryManager registryManager = MinecraftClient.getInstance().player.getWorld().getRegistryManager();
@@ -50,7 +50,7 @@ public class ItemSearcher {
                     PotionContentsComponent
                             .createStack(Items.LINGERING_POTION, Registries.POTION.getEntry(potion))
                 );
-                // this would create tipped arrows with the default potion duration
+                // This would create tipped arrows with the default potion duration
                 // I haven't found a way to get the correct duration
 //                additionalStacks.add(
 //                    PotionContentsComponent
@@ -62,9 +62,23 @@ public class ItemSearcher {
         } else {
             // otherwise only show items from inventory
             PlayerInventoryAccessor inventory = (PlayerInventoryAccessor) MinecraftClient.getInstance().player.getInventory();
-            stacks = inventory.getMain().stream()
-                    .filter(stack -> !stack.isEmpty())
-                    .distinct();
+            ArrayList<ItemStack> distinctStacks = new ArrayList<>(Collections.emptyList());
+            for (ItemStack stack : inventory.getMain()) {
+                if (!stack.isEmpty()) {
+                    boolean found = false;
+                    Item item = stack.getItem();
+                    List<String> enchantments = SearchBox.getEnchantments(stack);
+                    List<String> effects = SearchBox.getEffects(stack);
+                    for (ItemStack stack2 : distinctStacks) {
+                        if (stack2.equals(stack) || (stack2.isOf(item)
+                                && SearchBox.getEnchantments(stack2).equals(enchantments)
+                                && SearchBox.getEffects(stack2).equals(effects))
+                        ) { found = true; break; }
+                    }
+                    if (!found) distinctStacks.add(stack);
+                }
+            }
+            stacks = distinctStacks.stream();
         }
         return stacks
                 .map(stack -> {

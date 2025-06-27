@@ -13,7 +13,7 @@ import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.registry.*;
+import net.minecraft.registry.Registries;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.text.MutableText;
@@ -86,7 +86,7 @@ public class SearchBox extends Screen {
                         // A for loop is used instead of inventory.getSlotWithStack(stack) so that count is irrelevant
                         if (inventory.getStack(i).isOf(stack.getItem())
                                 && getEnchantments(inventory.getStack(i)).equals(getEnchantments(stack))
-                                && getEffects(inventory.getStack(i)).equals(getEnchantments(stack))
+                                && getEffects(inventory.getStack(i)).equals(getEffects(stack))
                         ) {
                             slotWithStack = i;
                             break;
@@ -163,7 +163,7 @@ public class SearchBox extends Screen {
                 }
 
                 // Replace hand
-                setStackToSlot(stack, selectedSlot);
+                 setStackToSlot(stack, selectedSlot);
             }
 
         }
