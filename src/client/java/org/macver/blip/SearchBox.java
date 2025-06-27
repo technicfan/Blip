@@ -253,9 +253,10 @@ public class SearchBox extends Screen {
                                 Text.translatable("enchantment.level." + (effect.getAmplifier() + 1)).getString()
                         );
             }
-            if (effect.getDuration() > 0) {
+            if (effect.getDuration() > 19) {
                 name.append(" (").append(effect.getDuration() / 1200).append(":");
                 if (effect.getDuration() / 20 % 60 != 0) {
+                    if (effect.getDuration() / 20 % 60 < 10) name.append("0");
                     name.append(effect.getDuration() / 20 % 60).append(")");
                 } else {
                     name.append("00)");
